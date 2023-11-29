@@ -107,12 +107,33 @@ func main() {
 	keys := GenKeys()
 	signature := SignMessage(m, keys)
 	res := Verify(signature, m, keys.public)
-	fmt.Println(res)
-	muSigKeys := make([]KeyPair, 5)
+	fmt.Println("everything valid:", res)
+	res = Verify(signature, "this is totally also signed by me", keys.public)
+	fmt.Println("different message:", res)
+	res = Verify(signature, m, GenKeys().public)
+	fmt.Println("another key:", res)
+	signature.s.Bits()[0] = ^signature.s.Bits()[0]
+	res = Verify(signature, m, keys.public)
+	fmt.Println("one broken bit in signature.s:", res)
+	signature.s.Bits()[0] = ^signature.s.Bits()[0]
+	res = Verify(signature, m, keys.public)
+	fmt.Println("bit is back:", res)
+	signature.R = elliptic_curves.DoubleECPoints(signature.R)
+	res = Verify(signature, m, keys.public)
+	fmt.Println("different signature.R:", res)
+
+	muSigKeys := make([]KeyPair, 5) //feel free to change the number of signers (to smth valid)
 	for i := range muSigKeys {
 		muSigKeys[i] = GenKeys()
 	}
 	muSig, X := MultiSignMessage(m, muSigKeys)
 	res = Verify(muSig, m, X)
-	fmt.Println(res)
+	fmt.Println("\nvalid multisignature:", res)
+	res = Verify(muSig, "alice and bob absolutely signed that how can you doubt it", X)
+	fmt.Println("different message:", res)
+	res = Verify(muSig, m, elliptic_curves.DoubleECPoints(X))
+	fmt.Println("broken shared public key:", res)
 }
+
+//MuSig probably needs more testing, but it seems like everything is ok
+//Also of course verify will not usually take public key as an explicit argument
