@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
@@ -11,32 +10,21 @@ import (
 
 type KeyPair struct {
 	private *big.Int
-	public  *big.Int
+	public  elliptic_curves.ECPoint
 }
 
 type Signature struct {
-	R *big.Int
+	R elliptic_curves.ECPoint
 	s *big.Int
 }
 
 func GenKeys() (keys KeyPair) {
 	g := elliptic_curves.BasePointGGet()
 	n := elliptic_curves.BasePointOrder()
-	keys.private, _ = rand.Int(rand.Reader, &n) //private key
-	t := elliptic_curves.ScalarMult(*keys.private, g)
-	keys.public = t.X //public key
-	if keys.public.Cmp(new(big.Int)) == 0 || !elliptic_curves.IsOnCurveCheck(t) {
+	keys.private, _ = rand.Int(rand.Reader, &n)
+	keys.public = elliptic_curves.ScalarMult(*keys.private, g)
+	if keys.public.X.Cmp(new(big.Int)) == 0 || !elliptic_curves.IsOnCurveCheck(keys.public) {
 		return GenKeys()
-	}
-	p := elliptic.P256().Params().P
-	gx := elliptic.P256().Params().Gx
-	gy := elliptic.P256().Params().Gy
-	x, y := elliptic.P256().ScalarBaseMult(p.Bytes())
-	if x.Cmp(gx) == 0 && y.Cmp(gy) == 0 {
-		fmt.Println("success")
-	}
-	if elliptic_curves.IsEqual(elliptic_curves.ScalarMult(*p, g), g) {
-		fmt.Println("aaa")
 	}
 	return keys
 }
@@ -44,31 +32,28 @@ func GenKeys() (keys KeyPair) {
 func SignMessage(m string, keys KeyPair) (signature Signature) {
 	g := elliptic_curves.BasePointGGet()
 	n := elliptic_curves.BasePointOrder()
-	r, _ := rand.Int(rand.Reader, &n)                            //private key
-	signature.R = elliptic_curves.ScalarMult(*keys.private, g).X //public key
-	str := append(signature.R.Bytes(), keys.public.Bytes()...)
+	r, _ := rand.Int(rand.Reader, &n)               //private key
+	signature.R = elliptic_curves.ScalarMult(*r, g) //public key
+	str := append(signature.R.X.Bytes(), keys.public.X.Bytes()...)
 	str = append(str, []byte(m)...)
 	hash := sha256.Sum256(str)
 	e := new(big.Int).SetBytes(hash[:])
 	signature.s = new(big.Int)
 	var t big.Int
 	signature.s.Add(r, t.Mul(keys.private, e))
+	signature.s.Mod(signature.s, &n)
 	return signature
 }
 
-func Verify(signature Signature, m string, P *big.Int) (res bool) {
+func Verify(signature Signature, m string, P elliptic_curves.ECPoint) (res bool) {
 	g := elliptic_curves.BasePointGGet()
-	str := append(signature.R.Bytes(), P.Bytes()...)
+	str := append(signature.R.X.Bytes(), P.X.Bytes()...)
 	str = append(str, []byte(m)...)
 	hash := sha256.Sum256(str)
 	e := new(big.Int).SetBytes(hash[:])
-	sum := new(big.Int)
-	sG := elliptic_curves.ScalarMult(*signature.s, g).X
-	var t big.Int
-	sum.Add(sG, t.Mul(P, e))
-	fmt.Println(sum)
-	fmt.Println(signature.R)
-	return sum.Cmp(signature.R) == 0
+	sG := elliptic_curves.ScalarMult(*signature.s, g)
+	t := elliptic_curves.AddECPoints(signature.R, elliptic_curves.ScalarMult(*e, P))
+	return elliptic_curves.IsEqual(sG, t)
 }
 
 func main() {
